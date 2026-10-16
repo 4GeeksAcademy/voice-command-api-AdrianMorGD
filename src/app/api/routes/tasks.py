@@ -4,6 +4,10 @@ from src.app.schemas.voice import Task, TaskCreate, TaskReplace, TaskUpdate
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
+# In-memory storage for the lifetime of this backend process.
+tasks: list[dict[str, int | str | bool]] = []
+_next_task_id = 1
+
 
 @router.get("", response_model=list[Task])
 def get_tasks() -> list[Task]:
@@ -12,8 +16,17 @@ def get_tasks() -> list[Task]:
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate) -> Task:
-    _ = payload
-    raise_not_implemented("POST /tasks")
+    global _next_task_id
+
+    task = {
+        "id": _next_task_id,
+        "title": payload.title,
+        "done": payload.done,
+    }
+    tasks.append(task)
+    _next_task_id += 1
+
+    return Task(**task)
 
 
 @router.put("/{task_id}", response_model=Task)
