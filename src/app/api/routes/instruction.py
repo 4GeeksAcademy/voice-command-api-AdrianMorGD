@@ -1,7 +1,8 @@
 import json
+import logging
 
-import httpx
 from fastapi import APIRouter, HTTPException, status
+from groq import Groq
 from pydantic import ValidationError
 
 from src.app.core.config import get_settings
@@ -14,6 +15,7 @@ from src.app.schemas.voice import (
 )
 
 router = APIRouter(tags=["instruction"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/instruction", response_model=InstructionPayload)
@@ -21,59 +23,49 @@ def route_instruction(
     payload: InstructionRequest,
 ) -> InstructionPayload:
     settings = get_settings()
-    if not (settings.luna_api_key and settings.luna_base_url and settings.luna_model):
+    if not settings.groq_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Luna LLM is not configured. Set LITE_LLM_API_KEY, "
-                "LITE_LLM_BASE_URL, and LITE_LLM_MODEL."
-            ),
+            detail="Groq LLM is not configured. Set GROQ_API_KEY.",
         )
-
-    base_url = settings.luna_base_url.rstrip("/")
-    completion_url = (
-        base_url
-        if base_url.endswith("/chat/completions")
-        else f"{base_url}/chat/completions"
-    )
 
     try:
-        response = httpx.post(
-            completion_url,
-            headers={
-                "Authorization": f"Bearer {settings.luna_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.luna_model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You route natural-language requests for a task-list API. "
-                            "Return only one JSON object with exactly these keys: "
-                            "endpoint, method, params. No Markdown or explanations. "
-                            "Allowed actions: list tasks: GET /tasks with empty params; "
-                            "create task: POST /tasks with {title, optional done}; "
-                            "replace task: PUT /tasks/{task_id} with task_id, title, done; "
-                            "update task: PATCH /tasks/{task_id} with task_id and only "
-                            "the changed title and/or done; delete task: DELETE "
-                            "/tasks/{task_id} with task_id. task_id must be a positive "
-                            "integer. Never invent an ID or task details not provided."
-                        ),
-                    },
-                    {"role": "user", "content": payload.transcription},
-                ],
-                "response_format": {"type": "json_object"},
-            },
+        client = Groq(
+            api_key=settings.groq_api_key,
             timeout=settings.request_timeout_seconds,
         )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+        response = client.chat.completions.create(
+            model=settings.groq_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You route natural-language requests for a task-list API. "
+                        "Return only one JSON object with exactly these keys: "
+                        "endpoint, method, params. No Markdown or explanations. "
+                        "The endpoint value must be only the exact path, never "
+                        "include the HTTP method in endpoint. Supported outputs: "
+                        "list: {\"endpoint\":\"/tasks\",\"method\":\"GET\","
+                        "\"params\":{}}; create: endpoint /tasks, method POST, "
+                        "params {title, optional done}; replace: endpoint "
+                        "/tasks/{task_id}, method PUT, params {task_id, title, done}; "
+                        "update: endpoint /tasks/{task_id}, method PATCH, params "
+                        "{task_id, and only the changed title and/or done}; delete: "
+                        "endpoint /tasks/{task_id}, method DELETE, params {task_id}. "
+                        "task_id must be a positive integer. Never invent an ID or "
+                        "task details not provided."
+                    ),
+                },
+                {"role": "user", "content": payload.transcription},
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content
+    except Exception as exc:
+        logger.exception("Groq chat completion request failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The Luna LLM service failed to return a valid chat completion.",
+            detail="The Groq LLM service failed to return a valid chat completion.",
         ) from exc
 
     try:
@@ -86,7 +78,7 @@ def route_instruction(
     except (json.JSONDecodeError, ValidationError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The Luna LLM returned invalid routing JSON for the task API.",
+            detail="The Groq LLM returned invalid routing JSON for the task API.",
         ) from exc
 
     return instruction

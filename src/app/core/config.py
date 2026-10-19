@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 class Settings(BaseSettings):
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "openai/gpt-oss-20b"
     groq_transcription_model: str = "whisper-large-v3-turbo"
     luna_model: str = Field(default="", validation_alias="LITE_LLM_MODEL")
     luna_base_url: str = Field(default="", validation_alias="LITE_LLM_BASE_URL")

@@ -75,8 +75,15 @@ def update_task(
 
 @router.delete("/{task_id}")
 def delete_task(task_id: int) -> dict[str, str]:
-    _ = task_id
-    raise_not_implemented("DELETE /tasks/{task_id}")
+    for index, task in enumerate(tasks):
+        if task["id"] == task_id:
+            del tasks[index]
+            return {"detail": f"Task with id {task_id} deleted."}
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Task with id {task_id} not found.",
+    )
 
 
 def raise_not_implemented(endpoint: str) -> None:
