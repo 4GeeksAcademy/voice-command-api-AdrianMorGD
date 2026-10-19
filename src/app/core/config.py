@@ -6,9 +6,12 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    groq_api_key: str
+    groq_api_key: str = ""
     groq_model: str = "llama-3.1-8b-instant"
     groq_transcription_model: str = "whisper-large-v3-turbo"
+    luna_model: str = Field(default="", validation_alias="LITE_LLM_MODEL")
+    luna_base_url: str = Field(default="", validation_alias="LITE_LLM_BASE_URL")
+    luna_api_key: str = Field(default="", validation_alias="LITE_LLM_API_KEY")
     request_timeout_seconds: float = 45.0
     allowed_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
