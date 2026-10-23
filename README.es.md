@@ -114,7 +114,25 @@ git remote set-url origin https://github.com/TU_USUARIO/TU_REPOSITORIO
 
 ### Configuracion del backend
 
-Crea un archivo `.env` a partir de `.env.example` y agrega tus credenciales de Groq.
+ Crea `.env` en la carpeta raiz del proyecto (junto a `pyproject.toml`) copiando la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Abre `.env` y reemplaza `GROQ_API_KEY` por una API key valida de Groq. No compartas ni subas este archivo a GitHub. La clave se usa solamente en el backend; no la pongas en `frontend/.env`.
+
+Variables disponibles:
+
+| Variable | Obligatoria | Uso |
+| --- | --- | --- |
+| `GROQ_API_KEY` | Si | API key de Groq. Es necesaria tanto para transcribir audio como para interpretar instrucciones. |
+| `GROQ_MODEL` | No | Modelo de chat que convierte la transcripcion en una accion. La plantilla incluye un valor predeterminado. |
+| `GROQ_TRANSCRIPTION_MODEL` | No | Modelo speech-to-text. El valor predeterminado es `whisper-large-v3-turbo`. |
+| `REQUEST_TIMEOUT_SECONDS` | No | Tiempo limite para las solicitudes a Groq (45 segundos por defecto). |
+| `ALLOWED_ORIGINS` | No | Origenes permitidos por CORS, separados por comas. Para Vite local, conserva `http://localhost:5173,http://127.0.0.1:5173`. |
+
+No agregues comillas alrededor de los valores del `.env`. Si cambias variables, reinicia el backend.
 
 Instala dependencias y ejecuta la API:
 
@@ -123,9 +141,18 @@ uv sync
 uv run uvicorn src.main:app --reload
 ```
 
+Deja esta terminal abierta. La API queda disponible en `http://127.0.0.1:8000` y la documentacion interactiva en `http://127.0.0.1:8000/docs`.
+
 ### Configuracion del frontend
 
 Crea `frontend/.env` a partir de `frontend/.env.example`.
+Crea `frontend/.env` desde la raiz del proyecto:
+
+```bash
+cp frontend/.env.example frontend/.env
+```
+
+La plantilla configura `VITE_API_BASE_URL=http://127.0.0.1:8000`, que debe apuntar a la URL del backend. Esta variable no es una API key. Si la cambias, reinicia Vite.
 
 Ejecuta el frontend:
 
@@ -134,6 +161,31 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Abre en el navegador la URL que muestre Vite (normalmente `http://localhost:5173`). Permite el acceso al microfono cuando el navegador lo solicite. Mantén las terminales del backend y del frontend en ejecucion al mismo tiempo.
+
+> Requisitos locales: Python 3.11 o superior, `uv`, Node.js y npm. En Windows PowerShell, usa `Copy-Item .env.example .env` y `Copy-Item frontend/.env.example frontend/.env` para copiar las plantillas.
+
+### Probar y diagnosticar la transcripcion
+
+Primero confirma que el backend esta activo abriendo `http://127.0.0.1:8000/` (debe responder `{"status":"ok"}`). Puedes probar la API y ver errores en `http://127.0.0.1:8000/docs`. Para comprobar la transcripcion directamente desde una terminal, usa un archivo de audio real compatible con Groq:
+
+```bash
+curl -X POST http://127.0.0.1:8000/transcribe \
+  -F "file=@./grabacion.webm;type=audio/webm" \
+  -F "language=es"
+```
+
+Reemplaza `./grabacion.webm` por la ruta a tu archivo. El campo `language` es opcional; se puede omitir para autodeteccion. El frontend graba hasta 20 segundos y envia el audio al backend para que Groq lo transcriba.
+
+Si aparece `The speech-to-text service failed to transcribe the audio.`, el backend no pudo completar la solicitud de transcripcion a Groq (HTTP 502). Revisa la terminal donde corre Uvicorn: ahora imprime el error original de Groq y su traceback, que permiten distinguir entre una clave invalida, un modelo no disponible, limites/cuota de la cuenta, problemas de red o un formato de audio rechazado. Verifica que:
+
+1. `GROQ_API_KEY` este configurada en el `.env` de la raiz, sin espacios sobrantes, y que la clave siga activa.
+2. `GROQ_TRANSCRIPTION_MODEL` sea un modelo de transcripcion disponible para tu cuenta (por defecto `whisper-large-v3-turbo`).
+3. El archivo contenga audio y use un formato admitido por Groq, como WebM, WAV, MP3, M4A u OGG; prueba tambien con una grabacion breve y clara.
+4. El backend se haya reiniciado despues de editar `.env` y tenga conexion a internet.
+
+La respuesta HTTP 503 con `GROQ_API_KEY is missing` indica que el backend no esta leyendo la variable; confirma que el archivo se llama exactamente `.env`, esta en la raiz del repositorio y arranca Uvicorn desde esa carpeta. Un error distinto durante `/instruction` afecta al modelo de chat/routing, no a la transcripcion de audio.
 
 ---
 

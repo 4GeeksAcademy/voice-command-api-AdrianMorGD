@@ -1,4 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, status
+import logging
+
+from fastapi import APIRouter, HTTPException, Request, status
 from groq import AsyncGroq
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
@@ -24,6 +27,7 @@ from src.app.schemas.voice import (
 from src.app.utils.language import normalize_transcription_language
 
 router = APIRouter(tags=["transcribe"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/")
@@ -108,6 +112,7 @@ async def _transcribe_audio(audio: UploadFile, language: str | None) -> str:
             language=language,
         )
     except Exception as exc:
+        logger.exception("Groq audio transcription request failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The speech-to-text service failed to transcribe the audio.",
